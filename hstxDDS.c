@@ -12,9 +12,9 @@
 #include "board/pins.h"
 #include "dma_dds/dma_dds.h"
 
-//#include "other/SEGGER_RTT/RTT/SEGGER_RTT.h"
+#include "other/SEGGER_RTT/RTT/SEGGER_RTT.h"
 #include <string.h>
-
+#include "reboot_helper.h"
 
 
 
@@ -44,20 +44,35 @@ int64_t alarm_callback(alarm_id_t id, void *user_data) {
 
 
 int main() {
-
-    stdio_init_all();
+    //set_sys_clock_khz(20000, true);
     
+    // [FIX] Switch system clock to run directly from the 12 MHz XOSC.
+    // This bypasses the PLL constraints.
+    clock_configure(clk_sys,
+                    CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLK_REF,
+                    CLOCKS_CLK_REF_CTRL_SRC_VALUE_XOSC_CLKSRC,
+                    12 * MHZ,
+                    12 * MHZ);
+
+    // Re-init standard IO (UART/USB) now that clock changed
+    stdio_init_all(); 
+    
+    
+    
+    //stdio_init_all();
+    //set_sys_clock_khz(20000, true);
     // Initialize hardware and RTT channels 0 and 1
     dds_init(LED_PIN); 
+    SEGGER_RTT_printf(0, "System Clock is now 12 MHz\n");
 
     // Enable watchdog
-    watchdog_enable(100, 1);
+    //watchdog_enable(100, 1);
 
     while (1) {
         // High-level mailbox now handles all RTT traffic exclusively
-        process_mailbox();
-        
-        watchdog_update();
+        //process_mailbox();
+        check_bootsel_reboot();
+        //watchdog_update();
     }
 }
 
