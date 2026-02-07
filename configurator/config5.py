@@ -56,7 +56,7 @@ class PicoController(cmd.Cmd):
 
         while time.time() - last_read_time < timeout:
             # Read whatever is there, up to 8KB
-            chunk = self.jlink.rtt_read(1, 8192)
+            chunk = self.jlink.rtt_read(1, 1000)
             if chunk:
                 received_data.extend(chunk)
                 last_read_time = time.time()  # Reset timeout on success
