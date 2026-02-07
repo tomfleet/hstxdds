@@ -1,5 +1,5 @@
 //LED
-#define LED_PIN 21
+#define LED_PIN 3
 
 // UART defines
 // By default the stdout UART is `uart0`, so we will use the second one

@@ -21,3 +21,7 @@ def generate_wavetable(name="default", length=1024, type="sine"):
     
     print(f"Generated: {filepath}")
     return filepath
+
+if __name__ == "__main__":
+    # This will generate bin_output/wt_chirp_sine_4096.bin
+    generate_wavetable(name="chirp", length=4096, type="sine")

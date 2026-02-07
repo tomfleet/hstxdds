@@ -95,7 +95,7 @@ class PicoController(cmd.Cmd):
         try:
             # 1. Force a reset on the MCU before sending the new header
             self.jlink.rtt_write(0, b'X')
-            #time.sleep(0.01) 
+            time.sleep(0.01) 
 
             # 2. Send 20-byte header to Channel 0
             header = struct.pack("<IIIII", 0xDEADBEEF, freq, freq, 0, len(bin_data))

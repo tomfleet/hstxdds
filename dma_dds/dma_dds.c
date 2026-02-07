@@ -19,9 +19,9 @@ dds_config_t current_config = {
 };
 
 // Internal RTT Buffers for Channel 1
-static uint8_t rtt_bin_up_buf[8192];   
-static uint8_t rtt_bin_down_buf[8192]; 
-
+static uint8_t rtt_bin_up_buf[10248];   
+static uint8_t rtt_bin_down_buf[10248]; 
+static uint8_t rtt_ch0_down_buf[256];
 static int dds_dma_chan = -1;
 static uint dds_slice;
 
@@ -65,7 +65,7 @@ void dds_init(uint gpio_pin) {
     // Config Channel 1 for Binary (Index 1)
     SEGGER_RTT_ConfigUpBuffer(1, "DataOut", rtt_bin_up_buf, sizeof(rtt_bin_up_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
     SEGGER_RTT_ConfigDownBuffer(1, "DataIn", rtt_bin_down_buf, sizeof(rtt_bin_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
-
+    SEGGER_RTT_ConfigDownBuffer(0, "Terminal", rtt_ch0_down_buf, sizeof(rtt_ch0_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
     for (int i = 0; i < 8; i++) gpio_set_function(i, GPIO_FUNC_HSTX);
 
     gpio_set_function(gpio_pin, GPIO_FUNC_PWM);
