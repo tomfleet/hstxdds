@@ -35,7 +35,7 @@
             ],
             "openOCDLaunchCommands": [
                 "transport select swd",
-                "adapter speed 4000",
+                "adapter speed 2000",
                 "rtt setup 0x20000000 0x80000 \"SEGGER RTT\"", 
                 "rtt start",
                 "rtt server start 19021 0"
