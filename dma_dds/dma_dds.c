@@ -99,80 +99,7 @@ void generate_standalone_sine(void) {
     apply_dds_config(100000, waveform_buffer, len);
 }
 
-void apply_dds_config3(uint32_t freq_hz, uint8_t *buf, uint32_t len) {
-    if (len == 0 || freq_hz == 0) return;
-    
-    // 1. Calculate Clock Divider
-    uint32_t sys_clk = clock_get_hz(clk_sys);
-    uint32_t div = sys_clk / freq_hz;
-    if (div < 1) div = 1;
-    if (div > 4095) div = 4095; // CSR field limit
-
-    // 2. Configure HSTX Control Register
-    // SHIFT = 8: Shift out 8 bits per cycle (consume 1 byte from FIFO effectively)
-    hstx_ctrl_hw->csr = (div << HSTX_CTRL_CSR_CLKDIV_LSB) | 
-                       (8 << HSTX_CTRL_CSR_SHIFT_LSB) | 
-                       HSTX_CTRL_CSR_EN_BITS;
-    
-    // 3. [FIX] Configure Bit Mapping (1:1 mapping)
-    // Map Data Bit 0 -> Pin 0, Data Bit 1 -> Pin 1, etc.
-    for (int i = 0; i < 8; i++) {
-        hstx_ctrl_hw->bit[i] = 12 + i; 
-    }
-
-    // 4. Configure DMA to feed the beast
-    dma_channel_abort(dds_dma_chan);
-    dma_channel_config c = dma_channel_get_default_config(dds_dma_chan);
-    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
-    channel_config_set_read_increment(&c, true);
-    channel_config_set_write_increment(&c, false); // FIFO is at fixed address
-    channel_config_set_dreq(&c, DREQ_HSTX);        // Pace transfer by HSTX FIFO
-
-    dma_channel_configure(dds_dma_chan, &c, 
-                          (void *)&hstx_fifo_hw->fifo, // Destination: HSTX FIFO
-                          buf,                         // Source: Your waveform buffer
-                          len,                         // Transfer count
-                          true);                       // Start immediately
-}
-
-void apply_dds_co2nfig(uint32_t freq_hz, uint8_t *buf, uint32_t len) {
-    if (len == 0 || freq_hz == 0) return;
-    
-    // 1. Calculate Clock Divider
-    uint32_t sys_clk = clock_get_hz(clk_sys);
-    uint32_t div = sys_clk / freq_hz;
-    if (div < 1) div = 1;
-    if (div > 4095) div = 4095; // CSR field limit
-
-    // 2. Configure HSTX Control Register
-    // SHIFT = 8: Shift out 8 bits per cycle (consume 1 byte from FIFO effectively)
-    hstx_ctrl_hw->csr = (div << HSTX_CTRL_CSR_CLKDIV_LSB) | 
-                       (8 << HSTX_CTRL_CSR_SHIFT_LSB) | 
-                       HSTX_CTRL_CSR_EN_BITS;
-    
-    // 3. [FIX] Configure Bit Mapping (1:1 mapping)
-    // Map Data Bit 0 -> Pin 0, Data Bit 1 -> Pin 1, etc.
-    for (int i = 0; i < 8; i++) {
-        hstx_ctrl_hw->bit[i] = 12 + i; 
-    }
-
-    // 4. Configure DMA to feed the beast
-    dma_channel_abort(dds_dma_chan);
-    dma_channel_config c = dma_channel_get_default_config(dds_dma_chan);
-    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
-    channel_config_set_read_increment(&c, true);
-    channel_config_set_write_increment(&c, false); // FIFO is at fixed address
-    channel_config_set_dreq(&c, DREQ_HSTX);        // Pace transfer by HSTX FIFO
-    __dmb(); // Ensure all config writes are complete before starting DMA   
-    dma_channel_configure(dds_dma_chan, &c, 
-                          (void *)&hstx_fifo_hw->fifo, // Destination: HSTX FIFO
-                          buf,                         // Source: Your waveform buffer
-                          len,                         // Transfer count
-                          true);                       // Start immediately
-}
-
 void dds_init_rtt(uint gpio_pin) {
-    SEGGER_RTT_Init();
     // Config Channel 1 for Binary (Index 1)
     SEGGER_RTT_ConfigUpBuffer(1, "DataOut", rtt_bin_up_buf, sizeof(rtt_bin_up_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
     SEGGER_RTT_ConfigDownBuffer(1, "DataIn", rtt_bin_down_buf, sizeof(rtt_bin_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
@@ -189,6 +116,8 @@ void dds_init_rtt(uint gpio_pin) {
 }
 
 void dds_init(uint gpio_pin) {
+    SEGGER_RTT_Init();
+
     // Initialize standard IO just in case
     stdio_init_all();
 
@@ -207,48 +136,54 @@ void dds_init(uint gpio_pin) {
 void process_mailbox() {
     uint32_t now = to_ms_since_boot(get_absolute_time());
 
-    // Timeout: Reset if stuck mid-transfer for > 500ms
+    // Timeout logic (unchanged)
     if (current_state != IDLE && (now - last_byte_time_ms > 500)) {
         current_state = IDLE;
         header_pos = 0;
         data_pos = 0;
-        SEGGER_RTT_WriteString(0, "Mbox: Timeout Reset\n");
     }
 
-    switch (current_state) {
-        case IDLE:
-            if (SEGGER_RTT_HasData(0)) {
-                uint8_t c;
-                SEGGER_RTT_Read(0, &c, 1);
-                if (c == 0xEF) { 
-                    header_work_buf[0] = 0xEF;
-                    header_pos = 1;
-                    last_byte_time_ms = now;
-                    current_state = READ_HEADER;
-                } else if (c == 'r') {
+    if (SEGGER_RTT_HasData(0)) {
+        uint8_t c;
+        SEGGER_RTT_Read(0, &c, 1);
+        last_byte_time_ms = now;
+
+        switch (current_state) {
+            case IDLE:
+                // 1. Check for Reset (New trigger: '!')
+                // if (c == '!') {
+                //     SEGGER_RTT_WriteString(0, "Rebooting to Bootloader...\n");
+                //     busy_wait_us(500);
+                //     //reset_usb_boot(0, 0);
+                // }
+                if (c == 'r') {
                     SEGGER_RTT_Write(1, waveform_buffer, current_config.buffer_len);
                 }
-            }
-            break;
-
-        case READ_HEADER:
-            // Pull bytes one-by-one to handle trickling J-Link data
-            while (SEGGER_RTT_HasData(0) && header_pos < 20) {
-                SEGGER_RTT_Read(0, &header_work_buf[header_pos++], 1);
-                last_byte_time_ms = now;
-            }
-
-            if (header_pos == 20) {
-                memcpy(&incoming_header, header_work_buf, 20);
-                if (incoming_header.sync == 0xDEADBEEF) {
-                    data_pos = 0;
-                    current_state = READ_DATA;
-                } else {
-                    current_state = IDLE;
-                    header_pos = 0;
+                // 3. Check for Sync Byte to start a new config transfer
+                else if (c == 0xEF) { 
+                    header_work_buf[0] = 0xEF;
+                    header_pos = 1;
+                    current_state = READ_HEADER;
                 }
-            }
-            break;
+                break;
+
+            case READ_HEADER:
+                header_work_buf[header_pos++] = c;
+                if (header_pos == 20) {
+                    memcpy(&incoming_header, header_work_buf, 20);
+                    if (incoming_header.sync == 0xDEADBEEF) {
+                        data_pos = 0;
+                        current_state = READ_DATA;
+                    } else {
+                        current_state = IDLE;
+                        header_pos = 0;
+                    }
+                }
+                break;    
+                //     }
+        //     break;
+
+
 
         case READ_DATA:
             while (SEGGER_RTT_HasData(1) && data_pos < incoming_header.len) {
@@ -268,6 +203,6 @@ void process_mailbox() {
             }
             break;
     }
-}
+}}
 
 
