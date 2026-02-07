@@ -12,7 +12,7 @@
 #include "board/pins.h"
 #include "dma_dds/dma_dds.h"
 
-#include "other/SEGGER_RTT/RTT/SEGGER_RTT.h"
+//#include "other/SEGGER_RTT/RTT/SEGGER_RTT.h"
 #include <string.h>
 
 
@@ -45,18 +45,19 @@ int64_t alarm_callback(alarm_id_t id, void *user_data) {
 
 int main() {
 
-    SEGGER_RTT_Init();
-    SEGGER_RTT_WriteString(0, "RTT Mailbox Active. Waiting for commands...\n");
-    // Initialize the LED Pin
-    gpio_init(LED_PIN);
-    gpio_set_dir(LED_PIN, GPIO_OUT);
-    gpio_put(LED_PIN, 0);
-    dds_init(LED_PIN);
+    stdio_init_all();
+    
+    // Initialize hardware and RTT channels 0 and 1
+    dds_init(LED_PIN); 
+
+    // Enable watchdog
+    watchdog_enable(100, 1);
 
     while (1) {
+        // High-level mailbox now handles all RTT traffic exclusively
         process_mailbox();
+        
         watchdog_update();
-        //sleep_ms(10); 
     }
 }
 
