@@ -44,15 +44,15 @@ int64_t alarm_callback(alarm_id_t id, void *user_data) {
 
 
 int main() {
-    //set_sys_clock_khz(20000, true);
+    set_sys_clock_khz(20000, true);
     
     // [FIX] Switch system clock to run directly from the 12 MHz XOSC.
-    // This bypasses the PLL constraints.
-    clock_configure(clk_sys,
-                    CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLK_REF,
-                    CLOCKS_CLK_REF_CTRL_SRC_VALUE_XOSC_CLKSRC,
-                    12 * MHZ,
-                    12 * MHZ);
+    // // This bypasses the PLL constraints.
+    // clock_configure(clk_sys,
+    //                 CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLK_REF,
+    //                 CLOCKS_CLK_REF_CTRL_SRC_VALUE_XOSC_CLKSRC,
+    //                 12 * MHZ,
+    //                 12 * MHZ);
 
     // Re-init standard IO (UART/USB) now that clock changed
     stdio_init_all(); 

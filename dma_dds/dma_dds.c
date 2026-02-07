@@ -95,8 +95,8 @@ void generate_standalone_sine(void) {
 
     // Blast it out at ~1 MHz sample rate (or whatever freq you want)
     // If you want a 100Hz tone with 1024 samples, sample rate = 102.4 kHz.
-    
-    apply_dds_config(1024000, waveform_buffer, len);
+    SEGGER_RTT_printf(0, "Generated standalone sine wave with %d samples\n", len);
+    apply_dds_config(100000, waveform_buffer, len);
 }
 
 void apply_dds_config3(uint32_t freq_hz, uint8_t *buf, uint32_t len) {
@@ -201,7 +201,7 @@ void dds_init(uint gpio_pin) {
     if (dds_dma_chan < 0) dds_dma_chan = dma_claim_unused_channel(true);
 
     // 3. AUTO-START (Bypassing RTT)
-    generate_standalone_sine();
+    //generate_standalone_sine();
 }
 
 void process_mailbox() {
