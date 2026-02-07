@@ -48,7 +48,7 @@ Revision: $Rev: 17697 $
 ----------------------------------------------------------------------
 */
 #include "SEGGER_RTT.h"
-#include "SEGGER_RTT_Conf.h"
+#include "other/SEGGER_RTT/Config/SEGGER_RTT_Conf.h"
 
 /*********************************************************************
 *

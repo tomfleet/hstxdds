@@ -23,7 +23,7 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
-set(PICO_BOARD pico2 CACHE STRING "Board type")
+set(PICO_BOARD solderparty_rp2350_stamp_xl CACHE STRING "Board type")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
@@ -32,16 +32,19 @@ project(hstxDDS C CXX ASM)
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
-
+set(PICO_BOARD pico2)
+set(PICO_PLATFORM rp2350-arm-s)
 # Add executable. Default name is the project name, version 0.1
 # Add the directory to the include path so "dma_dds.h" can be found
 include_directories(dma_dds
-                other/SEGGER_RTT/RTT)
+                other/SEGGER_RTT/RTT
+                board)
 
 add_executable(hstxDDS 
                 hstxDDS.c 
                 dma_dds/dma_dds.c
                 other/SEGGER_RTT/RTT/SEGGER_RTT.c
+                other/SEGGER_RTT/RTT/SEGGER_RTT_printf.c
                 )
 
 pico_set_program_name(hstxDDS "hstxDDS")
@@ -54,12 +57,12 @@ pico_generate_pio_header(hstxDDS ${CMAKE_CURRENT_LIST_DIR}/blink.pio)
 pico_enable_stdio_uart(hstxDDS 1)
 pico_enable_stdio_usb(hstxDDS 0)
 
-# Add the standard library to the build
-target_link_libraries(hstxDDS
-        pico_stdlib
-        hardware_pwm 
-    hardware_dma
-    )
+# # Add the standard library to the build
+# target_link_libraries(hstxDDS
+        
+#     hardware_dma
+#     hardware_hstx
+#     )
 
 # Add the standard include files to the build
 target_include_directories(hstxDDS PRIVATE
@@ -68,6 +71,8 @@ target_include_directories(hstxDDS PRIVATE
 
 # Add any user requested libraries
 target_link_libraries(hstxDDS 
+    pico_stdlib
+        hardware_pwm 
         hardware_spi
         hardware_i2c
         hardware_dma
@@ -76,6 +81,8 @@ target_link_libraries(hstxDDS
         hardware_timer
         hardware_watchdog
         hardware_clocks
+        pico_base_headers
+	    pico_util
         )
 
 pico_add_extra_outputs(hstxDDS)

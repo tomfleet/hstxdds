@@ -9,75 +9,14 @@
 #include "hardware/watchdog.h"
 #include "hardware/clocks.h"
 #include "hardware/uart.h"
+#include "board/pins.h"
 #include "dma_dds/dma_dds.h"
+
 #include "other/SEGGER_RTT/RTT/SEGGER_RTT.h"
-
-// // Define a control struct for your DDS parameters
-// typedef struct {
-//     uint32_t fstart;
-//     uint32_t fend;
-//     uint16_t ramp_ms;
-//     uint8_t  mode; // 0: Idle, 1: Free-run, 2: One-shot
-// } dds_config_t;
-
-dds_config_t current_config;
+#include <string.h>
 
 
-void process_rtt_commands() {
-    if (SEGGER_RTT_HasData(0)) {
-        uint8_t opcode;
-        SEGGER_RTT_Read(0, &opcode, 1);
 
-        switch(opcode) {
-            case 0x01: // LED
-                uint8_t state;
-                SEGGER_RTT_Read(0, &state, 1);
-                gpio_put(PICO_DEFAULT_LED_PIN, state);
-                break;
-            
-            case 0x02: // GPIO
-                uint8_t pin, val;
-                SEGGER_RTT_Read(0, &pin, 1);
-                SEGGER_RTT_Read(0, &val, 1);
-                if (val < 2) gpio_put(pin, val);
-                // If val == 2, you could RTT_Write back the current state
-                break;
-
-            case 0xFF: // DDS Config (Assuming a header byte)
-                // Read fstart, fend, etc.
-                break;
-        }
-    }
-}
-void check_for_updates() {
-    // Check if there is data waiting on RTT Down-Channel 0
-    if (SEGGER_RTT_HasData(0)) {
-        // Read the incoming bytes directly into our config struct
-        unsigned num_bytes = SEGGER_RTT_Read(0, &current_config, sizeof(dds_config_t));
-        
-        if (num_bytes == sizeof(dds_config_t)) {
-            // Logic to re-calculate your DDS increment/step based on fstart/fend
-            dds_update_config(&current_config); 
-            printf("Updated: Start %lu Hz, End %lu Hz\n", current_config.fstart, current_config.fend);
-        }
-    }
-}
-
-// SPI Defines
-// We are going to use SPI 0, and allocate it to the following GPIO pins
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
-#define SPI_PORT spi0
-#define PIN_MISO 16
-#define PIN_CS   17
-#define PIN_SCK  18
-#define PIN_MOSI 19
-
-// I2C defines
-// This example will use I2C0 on GPIO8 (SDA) and GPIO9 (SCL) running at 400KHz.
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
-#define I2C_PORT i2c0
-#define I2C_SDA 8
-#define I2C_SCL 9
 
 // Data will be copied from src to dst
 const char src[] = "Hello, world! (from DMA)";
@@ -104,138 +43,21 @@ int64_t alarm_callback(alarm_id_t id, void *user_data) {
 
 
 
-// UART defines
-// By default the stdout UART is `uart0`, so we will use the second one
-#define UART_ID uart1
-#define BAUD_RATE 115200
+int main() {
 
-// Use pins 4 and 5 for UART1
-// Pins can be changed, see the GPIO function select table in the datasheet for information on GPIO assignments
-#define UART_TX_PIN 4
-#define UART_RX_PIN 5
-
-
-
-int main()
-{
-    dds_init(8);
     SEGGER_RTT_Init();
-    stdio_init_all();
+    SEGGER_RTT_WriteString(0, "RTT Mailbox Active. Waiting for commands...\n");
+    // Initialize the LED Pin
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
+    gpio_put(LED_PIN, 0);
+    dds_init(LED_PIN);
 
-    // SPI initialisation. This example will use SPI at 1MHz.
-    spi_init(SPI_PORT, 1000*1000);
-    gpio_set_function(PIN_MISO, GPIO_FUNC_SPI);
-    gpio_set_function(PIN_CS,   GPIO_FUNC_SIO);
-    gpio_set_function(PIN_SCK,  GPIO_FUNC_SPI);
-    gpio_set_function(PIN_MOSI, GPIO_FUNC_SPI);
-    
-    // Chip select is active-low, so we'll initialise it to a driven-high state
-    gpio_set_dir(PIN_CS, GPIO_OUT);
-    gpio_put(PIN_CS, 1);
-    // For more examples of SPI use see https://github.com/raspberrypi/pico-examples/tree/master/spi
-
-    // I2C Initialisation. Using it at 400Khz.
-    i2c_init(I2C_PORT, 400*1000);
-    
-    gpio_set_function(I2C_SDA, GPIO_FUNC_I2C);
-    gpio_set_function(I2C_SCL, GPIO_FUNC_I2C);
-    gpio_pull_up(I2C_SDA);
-    gpio_pull_up(I2C_SCL);
-    // For more examples of I2C use see https://github.com/raspberrypi/pico-examples/tree/master/i2c
-
-    // Get a free channel, panic() if there are none
-    int chan = dma_claim_unused_channel(true);
-    
-    // 8 bit transfers. Both read and write address increment after each
-    // transfer (each pointing to a location in src or dst respectively).
-    // No DREQ is selected, so the DMA transfers as fast as it can.
-    
-    dma_channel_config c = dma_channel_get_default_config(chan);
-    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
-    channel_config_set_read_increment(&c, true);
-    channel_config_set_write_increment(&c, true);
-    
-    dma_channel_configure(
-        chan,          // Channel to be configured
-        &c,            // The configuration we just created
-        dst,           // The initial write address
-        src,           // The initial read address
-        count_of(src), // Number of transfers; in this case each is 1 byte.
-        true           // Start immediately.
-    );
-    
-    // We could choose to go and do something else whilst the DMA is doing its
-    // thing. In this case the processor has nothing else to do, so we just
-    // wait for the DMA to finish.
-    dma_channel_wait_for_finish_blocking(chan);
-    
-    // The DMA has now copied our text from the transmit buffer (src) to the
-    // receive buffer (dst), so we can print it out from there.
-    puts(dst);
-
-    // PIO Blinking example
-    PIO pio = pio0;
-    uint offset = pio_add_program(pio, &blink_program);
-    printf("Loaded program at %d\n", offset);
-    
-    #ifdef PICO_DEFAULT_LED_PIN
-    blink_pin_forever(pio, 0, offset, PICO_DEFAULT_LED_PIN, 3);
-    #else
-    blink_pin_forever(pio, 0, offset, 6, 3);
-    #endif
-    // For more pio examples see https://github.com/raspberrypi/pico-examples/tree/master/pio
-
-    // Interpolator example code
-    interp_config cfg = interp_default_config();
-    // Now use the various interpolator library functions for your use case
-    // e.g. interp_config_clamp(&cfg, true);
-    //      interp_config_shift(&cfg, 2);
-    // Then set the config 
-    interp_set_config(interp0, 0, &cfg);
-    // For examples of interpolator use see https://github.com/raspberrypi/pico-examples/tree/master/interp
-
-    // Timer example code - This example fires off the callback after 2000ms
-    add_alarm_in_ms(2000, alarm_callback, NULL, false);
-    // For more examples of timer use see https://github.com/raspberrypi/pico-examples/tree/master/timer
-
-    // Watchdog example code
-    if (watchdog_caused_reboot()) {
-        printf("Rebooted by Watchdog!\n");
-        // Whatever action you may take if a watchdog caused a reboot
-    }
-    
-    // Enable the watchdog, requiring the watchdog to be updated every 100ms or the chip will reboot
-    // second arg is pause on debug which means the watchdog will pause when stepping through code
-    watchdog_enable(100, 1);
-    
-    // You need to call this function at least more often than the 100ms in the enable call to prevent a reboot
-    watchdog_update();
-
-    printf("System Clock Frequency is %d Hz\n", clock_get_hz(clk_sys));
-    printf("USB Clock Frequency is %d Hz\n", clock_get_hz(clk_usb));
-    // For more examples of clocks use see https://github.com/raspberrypi/pico-examples/tree/master/clocks
-
-    // Set up our UART
-    uart_init(UART_ID, BAUD_RATE);
-    // Set the TX and RX pins by using the function select on the GPIO
-    // Set datasheet for more information on function select
-    gpio_set_function(UART_TX_PIN, GPIO_FUNC_UART);
-    gpio_set_function(UART_RX_PIN, GPIO_FUNC_UART);
-    
-    // Use some the various UART functions to send out data
-    // In a default system, printf will also output via the default UART
-    
-    // Send out a string, with CR/LF conversions
-    uart_puts(UART_ID, " Hello, UART!\n");
-    
-    // For more examples of UART use see https://github.com/raspberrypi/pico-examples/tree/master/uart
-
-    while (true) {
-      // High-priority interrupts are handling the actual waveform.
-        // main() just sits here and handles the "slow" management tasks.
-        process_rtt_commands();
-        
-        // Optional: tight_loop_contents() for Pico SDK power saving
-        //tight_loop_contents();
+    while (1) {
+        process_mailbox();
+        watchdog_update();
+        //sleep_ms(10); 
     }
 }
+
+    

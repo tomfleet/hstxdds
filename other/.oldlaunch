@@ -2,7 +2,30 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Pico Debug (Cortex-Debug)",
+            "name": "Pico Debug (J-Link Native)",
+            "request": "launch",
+            "type": "cortex-debug",
+            "servertype": "jlink",
+            "showDevDebugOutput": "raw",
+            "executable": "${command:raspberry-pi-pico.launchTargetPath}",
+            "device": "RP2350", 
+            "interface": "swd",
+            "serverpath": "C:/Program Files/SEGGER/JLink_V876/JLinkGDBServerCL.exe",
+            "armToolchainPath": "${userHome}/.pico-sdk/toolchain/14_2_Rel1/bin",
+            "rttConfig": {
+                "enabled": true,
+                "address": "auto",
+                "decoders": [{ "label": "DDS Console", "port": 0, "type": "console" }]
+            },
+            "svdFile": "${userHome}/.pico-sdk/sdk/2.2.0/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
+            "runToEntryPoint": "main",
+            "overrideLaunchCommands": [
+                "monitor reset init",
+                "load"
+            ]
+        },
+        {
+            "name": "Pico Debug (OpenOCD Fallback)",
             "cwd": "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
             "executable": "${command:raspberry-pi-pico.launchTargetPath}",
             "request": "launch",
@@ -12,62 +35,25 @@
             "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
             "device": "${command:raspberry-pi-pico.getChipUppercase}",
             "configFiles": [
-                "interface/jlink.cfg",                                                                              
-                //"interface/cmsis-dap.cfg",
+                "interface/jlink.cfg",
                 "target/${command:raspberry-pi-pico.getTarget}.cfg"
             ],
             "rttConfig": {
-            "enabled": true,
-            "address": "auto",
-            "clearSearch": false,
-            "decoders": [
-                {
-                    "label": "DDS Console",
-                    "port": 0,
-                    "type": "console"
-                }
-            ]
+                "enabled": true,
+                "address": "auto",
+                "decoders": [{ "label": "DDS Console", "port": 0, "type": "console" }]
             },
-            "svdFile": "${userHome}/.pico-sdk/sdk/2.2.0/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
-            "runToEntryPoint": "main",
-            // Fix for no_flash binaries, where monitor reset halt doesn't do what is expected
-            // Also works fine for flash binaries
-            "overrideLaunchCommands": [
-                "monitor reset init",
-                "load \"${command:raspberry-pi-pico.launchTargetPath}\""
-            ],
             "openOCDLaunchCommands": [
                 "transport select swd",
                 "adapter speed 5000",
-                "rtt setup 0x20000000 0x40000 \"SEGGER RTT\"", 
-                "rtt start",
-                "rtt server start 19021 0"
+                "rtt setup 0x20000000 0x80000 \"SEGGER RTT\"", 
+                "rtt start"
+            ],
+            "overrideLaunchCommands": [
+                "monitor reset init",
+                "load \"${command:raspberry-pi-pico.launchTargetPath}\""
             ]
-        },
-        {
-            "name": "Pico Debug (J-Link Native)",
-            "request": "launch",
-            "type": "cortex-debug",
-            "servertype": "jlink",
-            "executable": "${command:raspberry-pi-pico.launchTargetPath}",
-            "device": "RP2350", 
-            "interface": "swd",
-            "ipAddress": "localhost",
-            "serialNumber": "", // Leave blank unless you have multiple J-Links
-            "jlinkpath": "C:/Program Files/SEGGER/JLink_V876/JLinkGDBServerCL.exe",
-            "rttConfig": {
-                "enabled": true,
-                "address": "auto",
-                "decoders": [
-                    {
-                        "label": "DDS Console",
-                        "port": 0,
-                        "type": "console"
-                    }
-                ]
-            },
-            "svdFile": "${userHome}/.pico-sdk/sdk/2.2.0/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
-            "runToEntryPoint": "main"
-        },
+        }
     ]
 }
+ 

@@ -1,0 +1,249 @@
+
+#include "dma_dds.h"
+#include "hardware/pwm.h"
+#include "hardware/dma.h"
+#include "pico/multicore.h"
+#include "pico/stdlib.h"
+#include "hardware/irq.h"
+#include "hardware/structs/bus_ctrl.h"
+#include "hardware/structs/hstx_ctrl.h"
+#include "hardware/structs/hstx_fifo.h"
+#include "hardware/structs/qmi.h"
+#include "hardware/dma.h"
+#include "hardware/clocks.h"
+#include "other/SEGGER_RTT/RTT/SEGGER_RTT.h"
+//#include "pico/stdlib.h"
+#include <string.h>
+// Buffer for Channel 1 Binary Data
+static uint8_t rtt_bin_up_buf[8192];   // MCU -> Host
+static uint8_t rtt_bin_down_buf[8192]; // Host -> MCU
+
+// Local storage for the active DDS waveform
+//static uint8_t current_wavetable[8192] __attribute__((aligned(4)));
+uint8_t waveform_buffer[MAX_WAVEFORM_SIZE] __attribute__((aligned(4)));
+dds_config_t current_config = {
+    .waveform_buffer = waveform_buffer,
+    .buffer_len = 0
+};
+
+static int dds_dma_chan = -1;
+
+static int dma_chan;
+static uint dds_slice;
+
+typedef struct {
+    uint32_t sync;     // 0xDEADBEEF
+    uint8_t  type;     // Command type
+    uint32_t freq;     // Target Frequency
+    uint32_t size;     // Payload size
+    uint16_t checksum; // Simple CRC
+} __attribute__((packed)) dds_packet_t;
+
+// The structure sent by Python: struct.pack("<IIIII", 0xDEADBEEF, fstart, fend, duration, len)
+typedef struct __attribute__((packed)) {
+    uint32_t sync;
+    uint32_t fstart;
+    uint32_t fend;
+    uint32_t duration;
+    uint32_t len;
+} rtt_header_t;
+typedef enum {
+    DDS_STATE_IDLE,
+    DDS_STATE_READ_HEADER,
+    DDS_STATE_READ_DATA
+} dds_state_t;
+
+//static enum { DDS_STATE_IDLE, READ_HEADER, READ_DATA } current_state = DDS_STATE_IDLE;
+
+static dds_config_t current_config = {
+    .waveform_buffer = current_wavetable
+};
+
+#define MAX_WAVEFORM_SIZE 8192 
+uint8_t waveform_buffer[MAX_WAVEFORM_SIZE];
+#define RTT_TIMEOUT_MS 500
+// // Define a control struct for your DDS parameters
+// typedef struct {
+//     uint32_t fstart;
+//     uint32_t fend;
+//     uint16_t ramp_ms;
+//     uint8_t  mode; // 0: Idle, 1: Free-run, 2: One-shot
+// } dds_config_t;
+
+// The actual wavetable storage
+static uint8_t wavetable_ram[MAX_WAVEFORM_SIZE] __attribute__((aligned(4)));
+
+static dds_state_t current_state = DDS_STATE_IDLE;
+static rtt_header_t incoming_header;
+static uint8_t header_buffer[20];
+static uint32_t expected_bytes = 0;
+static uint32_t current_freq = 0;
+static uint32_t state_start_time = 0;
+
+
+void dds_init_rtt() {
+    SEGGER_RTT_Init();
+   // Config Channel 1 for Binary (Index 1)
+    SEGGER_RTT_ConfigUpBuffer(1, "BinaryOut", rtt_bin_up_buf, sizeof(rtt_bin_up_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
+    SEGGER_RTT_ConfigDownBuffer(1, "BinaryIn", rtt_bin_down_buf, sizeof(rtt_bin_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
+
+    //SEGGER_RTT_WriteString(0, "RTT Mailbox Active. Waiting for commands...\n");
+}
+
+// Function to dump the current buffer out
+void dds_dump_wavetable(uint8_t *buf, uint32_t len) {
+    SEGGER_RTT_WriteString(0, "Dumping wavetable to Channel 1...\n");
+    // Write raw bytes to Channel 1
+    SEGGER_RTT_Write(1, buf, len);
+}
+
+
+void apply_dds_config(uint32_t freq_hz, uint8_t *buf, uint32_t len) {
+    uint32_t sys_clk = clock_get_hz(clk_sys);
+    
+    // The HSTX CLKDIV is a 12-bit field within the CSR register.
+    // Usually treated as an integer divider where 0 or 1 = clk_sys speed.
+    uint32_t div = sys_clk / freq_hz;
+    if (div > 0xFFF) div = 0xFFF; // Cap at 12 bits
+
+    // Construct the CSR value
+    // Bits 27:16 = CLKDIV
+    // Bits 15:12 = SHIFT (8 bits for your binary format)
+    // Bit 0 = EN (Enable)
+    uint32_t csr_val = (div << HSTX_CTRL_CSR_CLKDIV_LSB) |
+                       (8 << HSTX_CTRL_CSR_SHIFT_LSB) |
+                       HSTX_CTRL_CSR_EN_BITS;
+
+    // Apply to hardware
+    hstx_ctrl_hw->csr = csr_val;
+
+    // Route shifter to output pins 0-7
+    for (int i = 0; i < 8; i++) {
+        hstx_ctrl_hw->bit[i] = 0; // 0 is the 'raw' shifter source
+    }
+
+    // DMA Setup
+    if (dds_dma_chan < 0) {
+        dds_dma_chan = dma_claim_unused_channel(true);
+    } else {
+        dma_channel_abort(dds_dma_chan);
+    }
+
+    dma_channel_config c = dma_channel_get_default_config(dds_dma_chan);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
+    channel_config_set_read_increment(&c, true);
+    channel_config_set_write_increment(&c, false);
+    channel_config_set_dreq(&c, DREQ_HSTX);
+
+    dma_channel_configure(
+        dds_dma_chan,
+        &c,
+        (void *)&hstx_fifo_hw->fifo,
+        buf,
+        len,
+        true
+    );
+}
+
+void dds_init(uint gpio_pin) {
+    // Set parallel output pins to HSTX
+    for (int i = 0; i < 8; i++) {
+        gpio_set_function(i, GPIO_FUNC_HSTX);
+    }
+
+    // PWM setup (kept as requested for pin)
+    gpio_set_function(gpio_pin, GPIO_FUNC_PWM);
+    dds_slice = pwm_gpio_to_slice_num(gpio_pin);
+    pwm_config cfg = pwm_get_default_config();
+    pwm_config_set_wrap(&cfg, 255);
+    pwm_init(dds_slice, &cfg, true);
+
+    // Claim and configure the DMA channel for HSTX
+    if (dds_dma_chan < 0) {
+        dds_dma_chan = dma_claim_unused_channel(true);
+    }
+    
+    dma_channel_config c = dma_channel_get_default_config(dds_dma_chan);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
+    channel_config_set_read_increment(&c, true);
+    channel_config_set_write_increment(&c, false);
+    channel_config_set_dreq(&c, DREQ_HSTX); 
+    
+    dma_channel_set_config(dds_dma_chan, &c, false);
+}
+
+void process_mailbox() {
+    switch (current_state) {
+        case DDS_STATE_IDLE:
+            if (SEGGER_RTT_HasData(0)) {
+                uint8_t c;
+                SEGGER_RTT_Read(0, &c, 1);
+                if (c == 0xEF) {
+                    header_buffer[0] = 0xEF;
+                    current_state = DDS_STATE_READ_HEADER;
+                } else if (c == '1') { gpio_put(25, 1); }
+                  else if (c == '0') { gpio_put(25, 0); }
+                  else if (c == 'r') {
+                                    // Optional: Log what we are doing to Channel 0
+                                    SEGGER_RTT_printf(0, "Sending %u bytes from 0x%p to Chan 1...\n", 
+                                                    current_config.buffer_len, 
+                                                    current_config.waveform_buffer);
+                                                    
+                                    // Write the actual binary data to Channel 1
+                                    SEGGER_RTT_Write(1, current_config.waveform_buffer, current_config.buffer_len);
+                                }
+            }
+            break;
+
+        case DDS_STATE_READ_HEADER:
+            if (SEGGER_RTT_GetBytesInBuffer(0) >= 19) {
+                SEGGER_RTT_Read(0, &header_buffer[1], 19);
+                memcpy(&incoming_header, header_buffer, 20);
+                if (incoming_header.sync == 0xDEADBEEF) {
+                    current_state = DDS_STATE_READ_DATA;
+                } else {
+                    current_state = DDS_STATE_IDLE;
+                }
+            }
+            break;
+
+        case DDS_STATE_READ_DATA:
+            if (SEGGER_RTT_GetBytesInBuffer(1) >= incoming_header.len) {
+                uint32_t r = SEGGER_RTT_Read(1, wavetable_ram, incoming_header.len);
+                current_config.buffer_len = r;
+                apply_dds_config(incoming_header.fstart, wavetable_ram, r);
+                SEGGER_RTT_printf(0, "DDS Sync: %u bytes @ %u Hz\n", r, incoming_header.fstart);
+                current_state = DDS_STATE_IDLE;
+            }
+            break;
+    }
+}
+
+
+void dds_update_config(dds_config_t *config) {
+    if (config->buffer_len == 0) return;
+    
+    // Trigger HSTX via your apply_dds_config function
+    apply_dds_config(config->fstart, config->waveform_buffer, config->buffer_len);
+    
+    SEGGER_RTT_WriteString(0, "DDS Config Applied.\n");
+}
+
+
+void dds_update_config2(dds_config_t *new_cfg) {
+    // 1. Safety check for the binary payload
+    if (!new_cfg->waveform_buffer || new_cfg->buffer_len == 0) {
+        SEGGER_RTT_WriteString(0, "Error: Empty Waveform Buffer\n");
+        return;
+    }
+
+    // 2. Trigger the HSTX hardware configuration
+    apply_dds_config(new_cfg->fstart, new_cfg->waveform_buffer, new_cfg->buffer_len);
+
+    // 3. Correct Formatted API: SEGGER_RTT_printf (lowercase 'p')
+    // This confirms the mailbox actually received the frequency values
+    SEGGER_RTT_printf(0, "DDS Config Applied: %u Hz -> %u Hz (%u bytes)\n", 
+                      new_cfg->fstart, 
+                      new_cfg->fend, 
+                      new_cfg->buffer_len);
+}
