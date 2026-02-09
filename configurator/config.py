@@ -33,6 +33,7 @@ class PicoController(cmd.Cmd):
         self.jlink.open()
         self.jlink.set_tif(pylink.enums.JLinkInterfaces.SWD)
         self.jlink.connect('RP2350_M33_0')
+        self.jlink.rtt_start()  # Critical: enable RTT polling
 
     def do_list_bins(self, arg):
         """List all .bin files in the configurator directory."""
@@ -75,26 +76,69 @@ class PicoController(cmd.Cmd):
             print(f"Error: Unknown state '{state}'. Use on, off, or get.")
 
     def do_send_dds(self, arg):
-        """Usage: send_dds <bin_index> <fstart> <fend> <ramp_ms> <mode>"""
+        """Usage: send_dds <bin_index> <fstart> <fend> <ramp_ms>
+        
+        Send waveform with DDS configuration.
+        - bin_index: index of .bin file in configurator/
+        - fstart: start frequency (Hz)
+        - fend: end frequency (Hz, for sweep—currently ignored)
+        - ramp_ms: ramp duration (ms, for sweep—currently ignored)
+        
+        Waveform format: 8-bit unsigned (0-255)
+        Max size: 8192 bytes
+        """
         args = arg.split()
-        if len(args) < 5:
+        if len(args) < 4:
             print("Error: Missing parameters.")
+            print("Usage: send_dds <bin_index> <fstart> <fend> <ramp_ms>")
             return
 
-        idx, fs, fe, ramp, mode = args
+        idx, fs, fe, ramp = args[0], args[1], args[2], args[3]
         bins = [f for f in os.listdir(self.bin_dir) if f.endswith('.bin')]
+        if int(idx) >= len(bins):
+            print(f"Error: bin_index {idx} out of range (0-{len(bins)-1})")
+            return
+        
         selected_bin = os.path.join(self.bin_dir, bins[int(idx)])
 
-        # 1. Send Parameters via RTT (Header)
-        # Struct: <IIHB (Start, End, Ramp, Mode)
-        header = struct.pack('<IIHB', int(fs), int(fe), int(ramp), int(mode))
-        self.jlink.rtt_write(0, header)
-
-        # 2. Send Wavetable Data
+        # 1. Read binary waveform
         with open(selected_bin, "rb") as f:
             blob = f.read()
-            self.jlink.rtt_write(1, blob) # Use Channel 1 for bulk data
-        print(f"Sent {selected_bin} and config to target.")
+        
+        wlen = len(blob)
+        if wlen > 8192:
+            print(f"Error: Waveform too large {wlen} bytes (max 8192)")
+            return
+
+        # 2. Validate waveform format (8-bit unsigned)
+        if wlen > 0:
+            min_val = min(blob)
+            max_val = max(blob)
+            if min_val < 0 or max_val > 255:
+                print(f"Warning: Waveform values out of range [{min_val}, {max_val}]")
+                print("         Expected 8-bit unsigned (0-255)")
+            else:
+                print(f"  Waveform OK: {min_val}-{max_val} (8-bit)")
+
+        # 3. Build 20-byte header: <IIIII
+        #    sync(0xDEADBEEF) + fstart + fend + duration_ms + length
+        header = struct.pack(
+            '<IIIII', 
+            0xDEADBEEF,        # Sync marker
+            int(fs),           # fstart (Hz)
+            int(fe),           # fend (Hz)
+            int(ramp),         # duration (ms)
+            wlen               # Data length
+        )
+        
+        # 4. Send header on Channel 0
+        self.jlink.rtt_write(0, header)
+        
+        # 5. Send waveform data on Channel 1
+        self.jlink.rtt_write(1, blob)
+        
+        print(f"Sent {selected_bin} ({wlen} bytes) @ {fs}Hz to target.")
+        print(f"  Sweep: {fs}Hz -> {fe}Hz over {ramp}ms")
 
     def write_rtt(self, data):
         """Finds the RTT Control Block and writes data to Channel 0."""
