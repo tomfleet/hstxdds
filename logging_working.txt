@@ -1,0 +1,345 @@
+
+SEGGER J-Link V8.76 - Real time terminal output
+SEGGER J-Link (unknown) V1.0, SN=801000529
+Process: JLinkGDBServerCL.exe
+Init: RTT initialized
+Init: DMA channel 0 claimed
+Init: default waveform loaded
+Init: COMPLETE - Ready for RTT commands
+Stopping DMA...
+DMA stopped
+Header OK: 100->100 Hz, 0 ms, len=8192
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fifo @ 0x5060004
+� �T before DMA
+apply_dds�1onfig called: freq=100, len=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=100 Hz
+DMA started
+DDS: Success 8192 bytes @ 100 Hz
+RTT:0> s
+Starting waveform...
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fi�o @ 0x50600004
+HALT before DMA
+apply_dds_config called: freq=100, len=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=100 Hz
+DMA started
+Waveform started
+RTT:0> s
+Starting waveform...
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fifo @ 0x50600004
+HALT before DMA
+apply_dds_config called: freq=100, len=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=100 Hz
+DMA started
+Waveform started
+
+Stopping DMA...
+DMA stopped
+Header OK: 1000->1000 Hz, 0 ms, len=8192
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_���>fifo @ 0x50600004
+HALT before DMA
+apply_dds_config called: freq=1000, len=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=1000 Hz
+DMA started
+DDS: Success 8192 bytes @ 1000 Hz
+Stopping DMA...
+DMA stopped
+apply_dds_c�nfig called: freq=1000, len=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=1000 Hz
+DMA st!9ted
+DDS: Success 8192 bytes @ 1000 Hz
+Stopping DMA...
+DMA stopped
+Header OK: 1000->1000 Hz, 0 ms, len=8192
+hstx_�4�7_hw @ 0x50600000
+hstx_fifo_hw->fifo @
+                    50600004
+HALT��fore DMA
+apply_dds_config called: freq=1000, len=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=1000 Hz
+DMA started
+DDS: Success 8192 bytes @ 1000 Hz
+Stopping DMA...
+DMA stopped
+Header OK: 1000->1000 Hz, 0 ms, len=8192
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fifo @ 0x50600004
+HALT before DMA
+apply_dds_config called: freq=1000, �2n=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=1000 Hz
+DMA started
+DDS: Success 8192 bytes @ 1000 Hz
+Stopping DMA...
+DMA stopped
+Header OK: 10000->10000 Hz, 0 ms, len=8192
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fifo @ 0x50600004
+HALT before DMA
+apply_dds_config ��lled: freq=10000, len=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=10000 Hz
+DMA started
+DDS: Success 8192 bytes @ 10000 Hz
+Stopping DMA...
+DMA stopped
+Header OK: 100000->100000 Hz, 0 ms, len=8192
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fifo @ 0x50600004
+HALT before DMA
+apply_dds_config called: freq=100000, len=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=100000 Hz
+DMA started
+DDS: Success 8192 bytes @ 100000 Hz
+Stopping DMA...
+DMA stopped
+Header OK: 100000->100000 Hz, 0 ms, len=8192
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fifo @ 0x50600004
+HAL before DMA
+188�y_dds_config called: freq=100000, len=8192, ch0�=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=100000 Hz
+DMA started
+DDS: Success 8192 bytes @ 100000 Hz
+RTT:0> s
+Starting waveform...
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fifo @ 0x50600004
+HALT before DMA
+apply_dds_config called: freq=100000, len=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=�92, freq=100000 Hz
+DMA started
+Waveform started
+Stopping DMA...
+DMA stopped
+Header OK: 10000->10000 Hz, 0 ms, len=8192
+4stx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fifo @ 0x50600004
+H!�T before DMA
+apply_dds_config called: freq=10000, len=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=10000 Hz
+DMA started
+DDS: Success 8192 bytes @ 10000 Hz
+RTT:0> s
+Starting waveform...
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fifo @ 0x0004
+HALT before DMA
+apply_dds_config called: freq=10000, len=8192, cha�=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=10000 Hz
+DMA started
+Waveform started
+RTT:0> 
+
+ python.exe .\configurator\config.py 
+Pico 2 DDS Control Interface. Type help or ? to list commands.
+
+(pico) ?
+
+Documented commands (type help <topic>):
+========================================
+help  led  list_bins  pin  send_dds
+
+Undocumented commands:
+======================
+exit
+
+(pico) list_bins
+Available profiles:
+  - oldC.bin
+(pico) send_dds
+Error: Missing parameters.
+Usage: send_dds <bin_index> <fstart> <fend> <ramp_ms>
+(pico) send_dds oldC.bin 0 200000 1
+Traceback (most recent call last):
+  File "D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS\configurator\config.py", line 193, in <module>
+    PicoController().cmdloop()
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.10_3.10.3056.0_x64__qbz5n2kfra8p0\lib\cmd.py", line 138, in cmdloop        
+    stop = self.onecmd(line)
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.10_3.10.3056.0_x64__qbz5n2kfra8p0\lib\cmd.py", line 217, in onecmd
+    return func(arg)
+  File "D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS\configurator\config.py", line 98, in do_send_dds
+    if int(idx) >= len(bins):
+ValueError: invalid literal for int() with base 10: 'oldC.bin'
+(.venv) PS D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS> python.exe .\configurator\config.py
+Pico 2 DDS Control Interface. Type help or ? to list commands.
+
+(pico) send_dds oldC.bin 1 200000 1
+Traceback (most recent call last):
+  File "D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS\configurator\config.py", line 193, in <module>
+    PicoController().cmdloop()
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.10_3.10.3056.0_x64__qbz5n2kfra8p0\lib\cmd.py", line 138, in cmdloop        
+    stop = self.onecmd(line)
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.10_3.10.3056.0_x64__qbz5n2kfra8p0\lib\cmd.py", line 217, in onecmd
+    return func(arg)
+  File "D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS\configurator\config.py", line 98, in do_send_dds
+    if int(idx) >= len(bins):
+ValueError: invalid literal for int() with base 10: 'oldC.bin'
+(.venv) PS D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS> python.exe .\configurator\config.py
+Pico 2 DDS Control Interface. Type help or ? to list commands.
+
+(pico) send_dds configurator\bin_output\wt_chirp_sine_4096.bin  0 200000 1
+Traceback (most recent call last):
+  File "D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS\configurator\config.py", line 193, in <module>
+    PicoController().cmdloop()
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.10_3.10.3056.0_x64__qbz5n2kfra8p0\lib\cmd.py", line 138, in cmdloop        
+    stop = self.onecmd(line)
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.10_3.10.3056.0_x64__qbz5n2kfra8p0\lib\cmd.py", line 217, in onecmd
+    return func(arg)
+  File "D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS\configurator\config.py", line 98, in do_send_dds
+    if int(idx) >= len(bins):
+ValueError: invalid literal for int() with base 10: 'configurator\\bin_output\\wt_chirp_sine_4096.bin'
+(.venv) PS D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS> python.exe .\configurator\config5.py
+Connected to RP2350. Root: D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS\configurator
+Pico 2 DDS Control Interface. Type help or ? to list commands.
+
+(pico) send_dds configurator\bin_output\wt_chirp_sine_4096.bin  0 200000 1
+fILE LOAD Error: [Errno 2] No such file or directory: 'D:\\dev\\snakeSnoil\\code\\playground\\HSTX_DDS\\hstxDDS\\configurator\\configurator\\bin_output\\wt_chirp_sine_4096.bin'
+Transmission Error: local variable 'bin_data' referenced before assignment
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  0 200000 1           
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  10 200000 1
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  100000     
+Transfer initiated: 8192 bytes.
+
+[MCU]: Stopping DMA...
+DMA stopped
+Header OK: 100000->100000 Hz, 0 ms, len=8192
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  10000 
+Transfer initiated: 8192 bytes.
+
+[MCU]: Stopping DMA...
+DMA stopped
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  1000 
+Transfer initiated: 8192 bytes.
+
+[MCU]: Stopping DMA...
+DMA stopped
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  1000
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  10000
+Transfer initiated: 8192 bytes.
+
+[MCU]: Stopping DMA...
+DMA stopped
+Header OK: 10000->10000 Hz, 0 ms, len=8192
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  10000
+Transfer initiated: 8192 bytes.
+
+[MCU]: Stopping DMA...
+DMA stopped
+Header OK: 10000->10000 Hz, 0 ms, len=8192
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  1000 
+Transfer initiated: 8192 bytes.
+
+[MCU]: DMA Config: buf=0x2000A9F8, len=8192, freq=10000 Hz
+DMA started
+Waveform started
+Stopping DMA...
+DMA stopped
+Header OK: 1000->1000 Hz, 0 ms, len=8192
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  1000
+Transfer initiated: 8192 bytes.
+
+[MCU]: Stopping DMA...
+DMA stopped
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  10000
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  10000
+Transfer initiated: 8192 bytes.
+
+[MCU]: Stopping DMA...
+DMA stopped
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  1000 
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  100 
+Transfer initiated: 8192 bytes.
+
+[MCU]: Stopping DMA...
+DMA stopped
+Header OK: 100->100 Hz, 0 ms, len=8192
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  100
+Transfer initiated: 8192 bytes.
+
+[MCU]: Stopping DMA...
+DMA stopped
+Header OK: 100->100 Hz, 0 ms, len=8192
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  100
+Transfer initiated: 8192 bytes.
+(pico) exit
+(.venv) PS D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS> python.exe .\configurator\config5.py
+Connected to RP2350. Root: D:\dev\snakeSnoil\code\playground\HSTX_DDS\hstxDDS\configurator
+Pico 2 DDS Control Interface. Type help or ? to list commands.
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  100
+Transfer initiated: 8192 bytes.
+
+[MCU]: Header OK: 100->100 Hz, 0 ms, len=8192
+hstx_fifo_hw @��0600000
+hstx_fifo_hw->fifo @ 0x50600004
+HALT before DMA
+apply_dds_conf�3 called: freq=100, len=8192, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=100 Hz
+DMA started
+DDS: Success 8192 bytes @ 100 Hz
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  1000
+Transfer initiated: 8192 bytes.
+
+[MCU]: Header OK: 1000->1000 Hz, 0 ms, len=8192
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  100 
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  100
+Transfer initiated: 8192 bytes.
+
+[MCU]: Header OK: 100->100 Hz, 0 ms, len=8192
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fifo @ 0x50600004
+HAL
+D��fore DMA
+apply_dds_3onfig called: freq=00, len=819�, chan=0
+DMA Config: buf=0x2000A9F8, len=8192, freq=100 Hz
+DMA started
+DDS: Success 8192 bytes @ 100 Hz
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  100
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  100
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  1000
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  1000
+Transfer initiated: 8192 bytes.
+
+[MCU]: Header OK: 1000->1000 Hz, 0 ms, len=8192
+hstx_fifo_hw @ 0x50600000
+hstx_fifo_hw->fifo @ 0x50600004
+HALT before DMA
+
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  1000
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  1000
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  10000
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  100000
+Transfer initiated: 8192 bytes.
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  100000
+Transfer initiated: 8192 bytes.
+(pico) s
+*** Unknown syntax: s
+(pico) send_dds .\bin_output\wt_chirp_sine_4096.bin  10000 
+Transfer initi

@@ -204,6 +204,17 @@ void dds_init_rtt(uint gpio_pin) {
 
     // Load default
     generate_waveform_sine(); // uses internal helper
+    SEGGER_RTT_WriteString(0, "Init: default waveform loaded\n");
+
+
+    // // Configure PWM
+    // gpio_set_function(3, GPIO_FUNC_PWM);
+    // dds_slice = pwm_gpio_to_slice_num(3);
+    // pwm_config cfg = pwm_get_default_config();
+    // pwm_config_set_wrap(&cfg, 255);
+    // pwm_init(dds_slice, &cfg, true);
+    // SEGGER_RTT_WriteString(0, "Init: PWM done\n");
+
     
     SEGGER_RTT_WriteString(0, "Init: COMPLETE - Ready for RTT commands\n");
 }
@@ -259,7 +270,7 @@ void dds_init_rtt2(uint gpio_pin) {
 
 
     // Configure PWM
-    gpio_set_function(gpio_pin, GPIO_FUNC_PWM);
+    gpio_set_function(3, GPIO_FUNC_PWM);
     dds_slice = pwm_gpio_to_slice_num(gpio_pin);
     pwm_config cfg = pwm_get_default_config();
     pwm_config_set_wrap(&cfg, 255);
