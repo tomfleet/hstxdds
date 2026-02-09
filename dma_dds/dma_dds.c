@@ -10,7 +10,7 @@
 #include "pico/time.h"
 #include "hardware/sync.h"
 #include "board/pins.h"
-#include "math.h"
+#include <math.h> // Needed for sin()
 #include "dma_dds/dma_dds.h"
 
 // Memory Allocation
@@ -77,17 +77,14 @@ void apply_dds_config(uint32_t freq_hz, uint8_t *buf, uint32_t len) {
     if (div < 1) div = 1;
     if (div > 4095) div = 4095;
 
-    SEGGER_RTT_printf(0, "DMA Config: buf=0x%08X, len=%u, freq=%u Hz\n", 
-                     (uint32_t)buf, len, freq_hz);
-
-    // 2. HSTX Configuration (with proper memory barriers)
-    uint32_t save_irq = save_and_disable_interrupts();
-    
+    // 2. HSTX Configuration
+    // SHIFT=8 (8 bits per cycle), EN_BITS=1 (Enable)
     hstx_ctrl_hw->csr = (div << HSTX_CTRL_CSR_CLKDIV_LSB) | 
                        (8 << HSTX_CTRL_CSR_SHIFT_LSB) | 
                        HSTX_CTRL_CSR_EN_BITS;
     
     // 3. Bit Mapping (1:1)
+    // Map Data Bits 0-7 to Output Pins 0-7 (relative to HSTX start)
     for (int i = 0; i < 8; i++) {
         hstx_ctrl_hw->bit[i] = i; 
     }
@@ -100,31 +97,17 @@ void apply_dds_config(uint32_t freq_hz, uint8_t *buf, uint32_t len) {
     channel_config_set_write_increment(&c, false);
     channel_config_set_dreq(&c, DREQ_HSTX);
 
-    // 5. Memory Barrier & Launch
+    // 5. Memory Barrier
     __dmb();
-    dma_busy = true;
-    // IMPORTANT: DO NOT auto-start - set to false and start manually
-    dma_channel_configure(dds_dma_chan, &c, (void *)&hstx_fifo_hw->fifo, buf, len, false);
-    
-    // Now manually start the transfer
-    dma_channel_set_irq0_enabled(dds_dma_chan, true);
-    dma_channel_start(dds_dma_chan);
-    
-    restore_interrupts(save_irq);
-    
-    SEGGER_RTT_WriteString(0, "DMA started\n");
+
+    // 6. Launch
+    dma_channel_configure(dds_dma_chan, &c, (void *)&hstx_fifo_hw->fifo, buf, len, true);
 }
 
-void __isr_dma_handler(void) {
-    if (dma_hw->ints0 & (1u << dds_dma_chan)) {
-        dma_hw->ints0 = 1u << dds_dma_chan; // Clear interrupt
-        dma_busy = false;
-        //SEGGER_RTT_WriteString(0, "DMA complete\n");
-    }
-}
 
-// Generate a simple Sine Wave into the buffer (no DMA start)
-void generate_waveform_sine(void) {
+
+// Generate a simple Sine Wave into the buffer
+void generate_standalone_sine(void) {
     // Generate 1024 points of a sine wave (0..255)
     int len = 1024;
     for (int i = 0; i < len; i++) {
@@ -133,120 +116,89 @@ void generate_waveform_sine(void) {
         float val = (sinf(angle) + 1.0f) * 127.5f;
         waveform_buffer[i] = (uint8_t)val;
     }
-    current_config.buffer_len = len;
+    
+    // Alternative: Sawtooth (good for bit check)
+    // for (int i = 0; i < len; i++) waveform_buffer[i] = (uint8_t)(i % 256);
+
+    // Blast it out at ~1 MHz sample rate (or whatever freq you want)
+    // If you want a 100Hz tone with 1024 samples, sample rate = 102.4 kHz.
+    SEGGER_RTT_printf(0, "Generated standalone sine wave with %d samples\n", len);
+    apply_dds_config(100000, waveform_buffer, len);
 }
 
-// Generate waveform AND start DMA transmission
-void generate_standalone_sine(void) {
-    // Only generate and start if no user waveform is present
-    if (current_config.buffer_len == 0) {
-        generate_waveform_sine();
-        // Start at slow speed for testing (1 kHz sample rate, not 10 MHz)
-        apply_dds_config(1000000, waveform_buffer, current_config.buffer_len);
-    } else {
-        // If user waveform is present, just start DMA with it
-        apply_dds_config(current_config.fstart ? current_config.fstart : 1000000, waveform_buffer, current_config.buffer_len);
+void apply_dds_config3(uint32_t freq_hz, uint8_t *buf, uint32_t len) {
+    if (len == 0 || freq_hz == 0) return;
+    
+    // 1. Calculate Clock Divider
+    uint32_t sys_clk = clock_get_hz(clk_sys);
+    uint32_t div = sys_clk / freq_hz;
+    if (div < 1) div = 1;
+    if (div > 4095) div = 4095; // CSR field limit
+
+    // 2. Configure HSTX Control Register
+    // SHIFT = 8: Shift out 8 bits per cycle (consume 1 byte from FIFO effectively)
+    hstx_ctrl_hw->csr = (div << HSTX_CTRL_CSR_CLKDIV_LSB) | 
+                       (8 << HSTX_CTRL_CSR_SHIFT_LSB) | 
+                       HSTX_CTRL_CSR_EN_BITS;
+    
+    // 3. [FIX] Configure Bit Mapping (1:1 mapping)
+    // Map Data Bit 0 -> Pin 0, Data Bit 1 -> Pin 1, etc.
+    for (int i = 0; i < 8; i++) {
+        hstx_ctrl_hw->bit[i] = 12 + i; 
     }
+
+    // 4. Configure DMA to feed the beast
+    dma_channel_abort(dds_dma_chan);
+    dma_channel_config c = dma_channel_get_default_config(dds_dma_chan);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
+    channel_config_set_read_increment(&c, true);
+    channel_config_set_write_increment(&c, false); // FIFO is at fixed address
+    channel_config_set_dreq(&c, DREQ_HSTX);        // Pace transfer by HSTX FIFO
+
+    dma_channel_configure(dds_dma_chan, &c, 
+                          (void *)&hstx_fifo_hw->fifo, // Destination: HSTX FIFO
+                          buf,                         // Source: Your waveform buffer
+                          len,                         // Transfer count
+                          true);                       // Start immediately
+}
+
+void apply_dds_co2nfig(uint32_t freq_hz, uint8_t *buf, uint32_t len) {
+    if (len == 0 || freq_hz == 0) return;
+    
+    // 1. Calculate Clock Divider
+    uint32_t sys_clk = clock_get_hz(clk_sys);
+    uint32_t div = sys_clk / freq_hz;
+    if (div < 1) div = 1;
+    if (div > 4095) div = 4095; // CSR field limit
+
+    // 2. Configure HSTX Control Register
+    // SHIFT = 8: Shift out 8 bits per cycle (consume 1 byte from FIFO effectively)
+    hstx_ctrl_hw->csr = (div << HSTX_CTRL_CSR_CLKDIV_LSB) | 
+                       (8 << HSTX_CTRL_CSR_SHIFT_LSB) | 
+                       HSTX_CTRL_CSR_EN_BITS;
+    
+    // 3. [FIX] Configure Bit Mapping (1:1 mapping)
+    // Map Data Bit 0 -> Pin 0, Data Bit 1 -> Pin 1, etc.
+    for (int i = 0; i < 8; i++) {
+        hstx_ctrl_hw->bit[i] = 12 + i; 
+    }
+
+    // 4. Configure DMA to feed the beast
+    dma_channel_abort(dds_dma_chan);
+    dma_channel_config c = dma_channel_get_default_config(dds_dma_chan);
+    channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
+    channel_config_set_read_increment(&c, true);
+    channel_config_set_write_increment(&c, false); // FIFO is at fixed address
+    channel_config_set_dreq(&c, DREQ_HSTX);        // Pace transfer by HSTX FIFO
+    __dmb(); // Ensure all config writes are complete before starting DMA   
+    dma_channel_configure(dds_dma_chan, &c, 
+                          (void *)&hstx_fifo_hw->fifo, // Destination: HSTX FIFO
+                          buf,                         // Source: Your waveform buffer
+                          len,                         // Transfer count
+                          true);                       // Start immediately
 }
 
 void dds_init_rtt(uint gpio_pin) {
-    // --- RTT & Buffer Setup ---
-    SEGGER_RTT_Init();
-    SEGGER_RTT_ConfigUpBuffer(1, "DataOut", rtt_bin_up_buf, sizeof(rtt_bin_up_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
-    SEGGER_RTT_ConfigDownBuffer(1, "DataIn", rtt_bin_down_buf, sizeof(rtt_bin_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
-    // Ensure Channel 0 is configured
-    SEGGER_RTT_ConfigDownBuffer(0, "Terminal", rtt_ch0_down_buf, sizeof(rtt_ch0_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
-
-    SEGGER_RTT_WriteString(0, "Init: RTT initialized\n");
-
-    // --- CRITICAL FIX: HSTX Hardware Initialization ---
-    // 1. Reset the HSTX block (Fixes Bus Fault on register access)
-    reset_block(RESETS_RESET_HSTX_BITS);
-    unreset_block_wait(RESETS_RESET_HSTX_BITS);
-
-    // 2. Configure HSTX Clock to System Clock (125 MHz)
-    clock_configure(
-        clk_hstx,
-        0,
-        CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLK_SYS,
-        125000000, 
-        125000000
-    );
-
-    // 3. Configure GPIO pins 12-19 for HSTX
-    // (Without this, signals don't leave the chip)
-    for (int i = 12; i <= 19; i++) {
-        gpio_set_function(i, GPIO_FUNC_HSTX);
-    }
-
-    // 4. Enable the HSTX Peripheral Block
-    // (Must be done before writing to FIFO or CSR)
-    if (hstx_ctrl_hw) {
-         hstx_ctrl_hw->csr = HSTX_CTRL_CSR_EN_BITS;
-    }
-    // --------------------------------------------------
-
-    // --- PWM Setup (Preserved) ---
-    gpio_set_function(0, GPIO_FUNC_PWM);
-    uint slice_num = pwm_gpio_to_slice_num(0);
-    pwm_config config = pwm_get_default_config();
-    pwm_config_set_clkdiv(&config, 4.f);
-    pwm_init(slice_num, &config, true);
-    pwm_set_gpio_level(0, 0); 
-
-    // --- DMA Setup (Preserved) ---
-    dds_dma_chan = dma_claim_unused_channel(true);
-    SEGGER_RTT_printf(0, "Init: DMA channel %d claimed\n", dds_dma_chan);
-
-    dma_channel_set_irq0_enabled(dds_dma_chan, true);
-    irq_set_exclusive_handler(DMA_IRQ_0, __isr_dma_handler);
-    irq_set_enabled(DMA_IRQ_0, true);
-
-    // Load default
-    generate_waveform_sine(); // uses internal helper
-    SEGGER_RTT_WriteString(0, "Init: default waveform loaded\n");
-
-
-    // // Configure PWM
-    // gpio_set_function(3, GPIO_FUNC_PWM);
-    // dds_slice = pwm_gpio_to_slice_num(3);
-    // pwm_config cfg = pwm_get_default_config();
-    // pwm_config_set_wrap(&cfg, 255);
-    // pwm_init(dds_slice, &cfg, true);
-    // SEGGER_RTT_WriteString(0, "Init: PWM done\n");
-
-    
-    SEGGER_RTT_WriteString(0, "Init: COMPLETE - Ready for RTT commands\n");
-}
-
-void dds_init_rtt2(uint gpio_pin) {
-    // --- HSTX Peripheral Initialization ---
-    // 1. De-assert reset and enable clock for HSTX peripheral
-    // These macros/constants are typical for RP2xxx SDKs; adjust if needed for RP2350
-    // HSTX_CTRL and HSTX_FIFO are separate blocks, both must be released from reset and clocked
-    // See: https://datasheets.raspberrypi.com/bbrp2350/rp2350-datasheet.pdf
-    // If not defined, you may need to define RESETS_RESET_HSTX_CTRL, RESETS_RESET_HSTX_FIFO, etc.
-    reset_block(RESETS_RESET_HSTX_BITS);
-    unreset_block_wait(RESETS_RESET_HSTX_BITS);
-
-    clock_configure(
-        clk_hstx,
-        0,
-        CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLK_SYS,
-        125 * 1000 * 1000, // Input frequency (assuming 125MHz sys clock)
-        125 * 1000 * 1000  // Output frequency
-        );
-
-    SEGGER_RTT_WriteString(0, "Init: HSTX peripheral clocks and resets enabled\n");
-
-
-    // Set Pins 12-19 to HSTX
-    for (int i = 0; i < 8; i++) {
-        gpio_set_function(HSTX_START_PIN + i, GPIO_FUNC_HSTX);
-    }
-    SEGGER_RTT_WriteString(0, "Init: GPIO HSTX done\n");
-
-    // Initialize RTT FIRST
     SEGGER_RTT_Init();
     SEGGER_RTT_WriteString(0, "Init: RTT initialized\n");
     
@@ -255,6 +207,7 @@ void dds_init_rtt2(uint gpio_pin) {
     SEGGER_RTT_ConfigDownBuffer(1, "DataIn", rtt_bin_down_buf, sizeof(rtt_bin_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
     SEGGER_RTT_ConfigDownBuffer(0, "Terminal", rtt_ch0_down_buf, sizeof(rtt_ch0_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
     SEGGER_RTT_WriteString(0, "Init: buffers done\n");
+    for (int i = 12; i < 20; i++) gpio_set_function(i, GPIO_FUNC_HSTX);
 
     // Claim DMA channel FIRST (needed by apply_dds_config)
     if (dds_dma_chan < 0) {
@@ -294,6 +247,22 @@ void dds_init(uint gpio_pin) {
 
     // 3. AUTO-START (Bypassing RTT)
     generate_standalone_sine();
+}
+
+void dds_init(uint gpio_pin) {
+    // Initialize standard IO just in case
+    stdio_init_all();
+
+    // 1. Set Pins 12-19 to HSTX
+    for (int i = 0; i < 8; i++) {
+        gpio_set_function(HSTX_START_PIN + i, GPIO_FUNC_HSTX);
+    }
+
+    // 2. Claim DMA
+    if (dds_dma_chan < 0) dds_dma_chan = dma_claim_unused_channel(true);
+
+    // 3. AUTO-START (Bypassing RTT)
+    //generate_standalone_sine();
 }
 
 void process_mailbox() {
