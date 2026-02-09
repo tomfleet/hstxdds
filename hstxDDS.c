@@ -66,13 +66,13 @@ int main() {
     SEGGER_RTT_printf(0, "System Clock is now 12 MHz\n");
 
     // Enable watchdog
-    watchdog_enable(100, 1);
+    //watchdog_enable(100, 1);
 
     while (1) {
         // High-level mailbox now handles all RTT traffic exclusively
         process_mailbox();
         //check_bootsel_reboot();
-        watchdog_update();
+        //watchdog_update();
     }
 }
 
