@@ -29,6 +29,7 @@ extern uint8_t waveform_buffer[MAX_WAVEFORM_SIZE];
 
 // Function Prototypes
 void dds_init(uint gpio_pin);
+void dds_init_rtt(uint gpio_pin);
 void apply_dds_config(uint32_t freq_hz, uint8_t *buf, uint32_t len);
 void dds_update_config(dds_config_t *config);
 void process_mailbox(void);

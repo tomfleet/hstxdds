@@ -44,6 +44,13 @@ int64_t alarm_callback(alarm_id_t id, void *user_data) {
 
 
 int main() {
+    //__breakpoint();
+    //stdio_init_all();
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
+    gpio_put(LED_PIN, 0);
+    // Initialize hardware and RTT channels 0 and 1
+    dds_init_rtt(LED_PIN); 
     set_sys_clock_khz(20000, true);
     
     // [FIX] Switch system clock to run directly from the 12 MHz XOSC.
@@ -66,13 +73,13 @@ int main() {
     SEGGER_RTT_printf(0, "System Clock is now 12 MHz\n");
 
     // Enable watchdog
-    watchdog_enable(100, 1);
+    //watchdog_enable(100, 1);
 
     while (1) {
         // High-level mailbox now handles all RTT traffic exclusively
         process_mailbox();
-        //check_bootsel_reboot();
-        watchdog_update();
+        
+        //watchdog_update();
     }
 }
 
