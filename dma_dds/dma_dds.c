@@ -1,6 +1,8 @@
 #include "hardware/pwm.h"
 #include "hardware/dma.h"
+#include "hardware/resets.h"
 #include "hardware/clocks.h"
+#include "hardware/gpio.h"
 #include "hardware/structs/hstx_ctrl.h"
 #include "hardware/structs/hstx_fifo.h"
 #include "other/SEGGER_RTT/RTT/SEGGER_RTT.h"
@@ -17,7 +19,9 @@ uint8_t waveform_buffer[MAX_WAVEFORM_SIZE] __attribute__((aligned(4)));
 dds_config_t current_config = {
     .waveform_buffer = waveform_buffer,
     .buffer_len = 0,
-    .fstart = 0
+    .fstart = 0,
+    .fend = 0,
+    .duration_ms = 0
 };
 
 // Internal RTT Buffers for Channel 1
@@ -25,6 +29,7 @@ static uint8_t rtt_bin_up_buf[10248];
 static uint8_t rtt_bin_down_buf[10248]; 
 static uint8_t rtt_ch0_down_buf[256];
 static int dds_dma_chan = -1;
+static volatile bool dma_busy = false;
 static uint dds_slice;
 
 // State Machine Variables
@@ -35,6 +40,11 @@ static uint8_t header_work_buf[20];
 static uint32_t header_pos = 0;
 static uint32_t data_pos = 0;
 static uint32_t last_byte_time_ms = 0;
+
+
+// --- HARDWARE CONFIGURATION ---
+// Stock Pico 2 HSTX Pins are usually GP12 - GP19
+#define HSTX_START_PIN 12 
 
 
 // --- HARDWARE CONFIGURATION ---
@@ -196,13 +206,16 @@ void process_mailbox() {
             if (data_pos >= incoming_header.len) {
                 current_config.buffer_len = data_pos;
                 current_config.fstart = incoming_header.fstart;
+                current_config.fend = incoming_header.fend;
+                current_config.duration_ms = incoming_header.duration;
                 apply_dds_config(current_config.fstart, waveform_buffer, data_pos);
-                SEGGER_RTT_printf(0, "DDS: Success %u bytes\n", data_pos);
+                SEGGER_RTT_printf(0, "DDS: Success %u bytes @ %u Hz\n", data_pos, incoming_header.fstart);
                 current_state = IDLE;
                 header_pos = 0;
             }
             break;
     }
 }}
+
 
 

@@ -102,6 +102,7 @@ int main() {
 
     // Enable watchdog
     //watchdog_enable(100, 1);
+    //watchdog_enable(100, 1);
 
     while (1) {
         // High-level mailbox now handles all RTT traffic exclusively

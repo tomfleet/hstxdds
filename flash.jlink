@@ -1,0 +1,5 @@
+loadfile build/hstxDDS.elf
+verifybin build/hstxDDS.elf 0
+reset
+go
+exit
