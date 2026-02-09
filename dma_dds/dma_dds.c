@@ -1,6 +1,8 @@
 #include "hardware/pwm.h"
 #include "hardware/dma.h"
+#include "hardware/resets.h"
 #include "hardware/clocks.h"
+#include "hardware/gpio.h"
 #include "hardware/structs/hstx_ctrl.h"
 #include "hardware/structs/hstx_fifo.h"
 #include "other/SEGGER_RTT/RTT/SEGGER_RTT.h"
@@ -48,7 +50,7 @@ void apply_dds_config(uint32_t freq_hz, uint8_t *buf, uint32_t len) {
     SEGGER_RTT_printf(0, "hstx_fifo_hw @ 0x%08X\n", (uint32_t)hstx_fifo_hw);
     SEGGER_RTT_printf(0, "hstx_fifo_hw->fifo @ 0x%08X\n", (uint32_t)&hstx_fifo_hw->fifo);
     SEGGER_RTT_WriteString(0, "HALT before DMA\n");
-    while (1) { __breakpoint(); } // halt for inspection
+    //while (1) { __breakpoint(); } // halt for inspection
 
     SEGGER_RTT_printf(0, "apply_dds_config called: freq=%u, len=%u, chan=%d\n", freq_hz, len, dds_dma_chan);
     if (dma_busy) {
@@ -117,7 +119,7 @@ void __isr_dma_handler(void) {
     if (dma_hw->ints0 & (1u << dds_dma_chan)) {
         dma_hw->ints0 = 1u << dds_dma_chan; // Clear interrupt
         dma_busy = false;
-        SEGGER_RTT_WriteString(0, "DMA complete\n");
+        //SEGGER_RTT_WriteString(0, "DMA complete\n");
     }
 }
 
@@ -148,22 +150,90 @@ void generate_standalone_sine(void) {
 }
 
 void dds_init_rtt(uint gpio_pin) {
+    // --- RTT & Buffer Setup ---
+    SEGGER_RTT_Init();
+    SEGGER_RTT_ConfigUpBuffer(1, "DataOut", rtt_bin_up_buf, sizeof(rtt_bin_up_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
+    SEGGER_RTT_ConfigDownBuffer(1, "DataIn", rtt_bin_down_buf, sizeof(rtt_bin_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
+    // Ensure Channel 0 is configured
+    SEGGER_RTT_ConfigDownBuffer(0, "Terminal", rtt_ch0_down_buf, sizeof(rtt_ch0_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
+
+    SEGGER_RTT_WriteString(0, "Init: RTT initialized\n");
+
+    // --- CRITICAL FIX: HSTX Hardware Initialization ---
+    // 1. Reset the HSTX block (Fixes Bus Fault on register access)
+    reset_block(RESETS_RESET_HSTX_BITS);
+    unreset_block_wait(RESETS_RESET_HSTX_BITS);
+
+    // 2. Configure HSTX Clock to System Clock (125 MHz)
+    clock_configure(
+        clk_hstx,
+        0,
+        CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLK_SYS,
+        125000000, 
+        125000000
+    );
+
+    // 3. Configure GPIO pins 12-19 for HSTX
+    // (Without this, signals don't leave the chip)
+    for (int i = 12; i <= 19; i++) {
+        gpio_set_function(i, GPIO_FUNC_HSTX);
+    }
+
+    // 4. Enable the HSTX Peripheral Block
+    // (Must be done before writing to FIFO or CSR)
+    if (hstx_ctrl_hw) {
+         hstx_ctrl_hw->csr = HSTX_CTRL_CSR_EN_BITS;
+    }
+    // --------------------------------------------------
+
+    // --- PWM Setup (Preserved) ---
+    gpio_set_function(0, GPIO_FUNC_PWM);
+    uint slice_num = pwm_gpio_to_slice_num(0);
+    pwm_config config = pwm_get_default_config();
+    pwm_config_set_clkdiv(&config, 4.f);
+    pwm_init(slice_num, &config, true);
+    pwm_set_gpio_level(0, 0); 
+
+    // --- DMA Setup (Preserved) ---
+    dds_dma_chan = dma_claim_unused_channel(true);
+    SEGGER_RTT_printf(0, "Init: DMA channel %d claimed\n", dds_dma_chan);
+
+    dma_channel_set_irq0_enabled(dds_dma_chan, true);
+    irq_set_exclusive_handler(DMA_IRQ_0, __isr_dma_handler);
+    irq_set_enabled(DMA_IRQ_0, true);
+
+    // Load default
+    generate_waveform_sine(); // uses internal helper
+    
+    SEGGER_RTT_WriteString(0, "Init: COMPLETE - Ready for RTT commands\n");
+}
+
+void dds_init_rtt2(uint gpio_pin) {
     // --- HSTX Peripheral Initialization ---
     // 1. De-assert reset and enable clock for HSTX peripheral
     // These macros/constants are typical for RP2xxx SDKs; adjust if needed for RP2350
     // HSTX_CTRL and HSTX_FIFO are separate blocks, both must be released from reset and clocked
     // See: https://datasheets.raspberrypi.com/bbrp2350/rp2350-datasheet.pdf
     // If not defined, you may need to define RESETS_RESET_HSTX_CTRL, RESETS_RESET_HSTX_FIFO, etc.
-    #ifdef RESETS_RESET_HSTX_CTRL
-    reset_block(RESETS_RESET_HSTX_CTRL | RESETS_RESET_HSTX_FIFO);
-    unreset_block_wait(RESETS_RESET_HSTX_CTRL | RESETS_RESET_HSTX_FIFO);
-    #endif
-    #ifdef CLOCKS_CLK_HSTX_CTRL_CTRL_AUXSRC_VALUE_CLK_SYS
-    clock_enable(CLOCKS_CLK_HSTX_CTRL_CTRL_AUXSRC_VALUE_CLK_SYS);
-    clock_enable(CLOCKS_CLK_HSTX_FIFO_CTRL_AUXSRC_VALUE_CLK_SYS);
-    #endif
+    reset_block(RESETS_RESET_HSTX_BITS);
+    unreset_block_wait(RESETS_RESET_HSTX_BITS);
+
+    clock_configure(
+        clk_hstx,
+        0,
+        CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLK_SYS,
+        125 * 1000 * 1000, // Input frequency (assuming 125MHz sys clock)
+        125 * 1000 * 1000  // Output frequency
+        );
 
     SEGGER_RTT_WriteString(0, "Init: HSTX peripheral clocks and resets enabled\n");
+
+
+    // Set Pins 12-19 to HSTX
+    for (int i = 0; i < 8; i++) {
+        gpio_set_function(HSTX_START_PIN + i, GPIO_FUNC_HSTX);
+    }
+    SEGGER_RTT_WriteString(0, "Init: GPIO HSTX done\n");
 
     // Initialize RTT FIRST
     SEGGER_RTT_Init();
@@ -187,11 +257,6 @@ void dds_init_rtt(uint gpio_pin) {
     generate_waveform_sine();
     SEGGER_RTT_WriteString(0, "Init: default waveform loaded\n");
 
-    // Set Pins 12-19 to HSTX
-    for (int i = 0; i < 8; i++) {
-        gpio_set_function(HSTX_START_PIN + i, GPIO_FUNC_HSTX);
-    }
-    SEGGER_RTT_WriteString(0, "Init: GPIO HSTX done\n");
 
     // Configure PWM
     gpio_set_function(gpio_pin, GPIO_FUNC_PWM);
