@@ -22,26 +22,6 @@ uint8_t waveform_buffer[MAX_WAVEFORM_SIZE] __attribute__((aligned(4)));
 #endif
 
 
-// // State Management
-// dds_config_t current_config = {
-//     .waveform_buffer = waveform_buffer,
-//     .buffer_len = 0,
-//     .fstart = 0,
-//     .fend = 0,
-//     .duration_ms = 0,
-//     .mode = DDS_MODE_SINGLE,
-//     .repeats = 0,
-//     .delay_ms = 0
-// };
-
-// dds_config_t current_config = {
-//     .waveform_buffer = waveform_buffer,
-//     .buffer_len = 0,
-//     .fstart = 0,
-//     .fend = 0,
-//     .duration_ms = 0
-// };
-
 // RTT Buffers
 static uint8_t rtt_bin_up_buf[1024];   
 static uint8_t rtt_bin_down_buf[16384 + 64]; // Enough for Wave + Header

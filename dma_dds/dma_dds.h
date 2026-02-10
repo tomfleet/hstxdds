@@ -18,7 +18,7 @@
 #endif
 
 #ifndef DDS_HSTX_NIBBLE_SWAP
-#define DDS_HSTX_NIBBLE_SWAP 1
+#define DDS_HSTX_NIBBLE_SWAP 0
 #endif
 
 // HSTX pad tuning (GPIO pad settings)
