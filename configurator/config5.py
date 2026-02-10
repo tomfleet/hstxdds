@@ -72,41 +72,93 @@ class PicoController(cmd.Cmd):
             print("Error: Read timeout. No data arrived on Channel 1.")
 
     def do_send_dds(self, line):
-        """Metadata to Chan 0, Binary to Chan 1."""
+        """
+        Usage: send_dds <filename> <fstart> [fend] [options]
+
+                Options:
+                    loop          : Run waveform continuously
+                    loop=Y|N      : Explicit loop enable/disable
+                    repeat        : Run waveform once (alias for repeat=1)
+                    repeat=N      : Run waveform N times
+                    delay=ms      : Delay between repeats in ms
+                    <ms>          : Bare number treated as delay
+        """
         args = line.split()
-        if len(args) < 2: return
-        
+        if len(args) < 2:
+            print("Usage: send_dds <filename> <fstart> [fend] [loop|repeat=N] [delay=ms]")
+            return
+
         filename = os.path.join(self.bin_dir, args[0])
+
+        # Parse Options
+        mode = 0
+        repeats = 0
+        delay = 0
+
         try:
-            freq = int(args[1])
+            fstart = int(args[1])
+            fend = fstart
+
+            idx = 2
+            if idx < len(args) and args[idx].lstrip("-").isdigit():
+                fend = int(args[idx])
+                idx += 1
+
+            for x in args[idx:]:
+                xl = x.lower()
+                if xl == "loop":
+                    mode = 1
+                elif xl.startswith("loop="):
+                    value = xl.split("=", 1)[1].strip()
+                    if value in {"1", "true", "y", "yes"}:
+                        mode = 1
+                    elif value in {"0", "false", "n", "no"}:
+                        mode = 0
+                    else:
+                        raise ValueError(f"invalid loop value: {value}")
+                elif xl == "repeat":
+                    mode = 2
+                    repeats = 1
+                elif xl.startswith("repeat="):
+                    value = xl.split("=", 1)[1].strip()
+                    if not value.lstrip("-").isdigit():
+                        raise ValueError(f"invalid repeat value: {value}")
+                    mode = 2
+                    repeats = int(value)
+                elif xl.startswith("delay="):
+                    delay = int(xl.split("=", 1)[1])
+                elif xl.lstrip("-").isdigit() and delay == 0:
+                    delay = int(xl)
+
             with open(filename, "rb") as f:
                 bin_data = f.read()
-            
-            # # Send the 20-byte metadata header to Channel 0
-            # header = struct.pack("<IIIII", 0xDEADBEEF, freq, freq, 0, len(bin_data))
-            # self.jlink.rtt_write(0, header)
-            
-            # # Send raw binary to Channel 1
-            # self.jlink.rtt_write(1, bin_data)
-            # print(f"Header + {len(bin_data)} bytes dispatched.")
         except Exception as e:
-            print(f"fILE LOAD Error: {e}")
+            print(f"File/Arg Error: {e}")
+            return
 
         try:
             # 1. Force a reset on the MCU before sending the new header
-            self.jlink.rtt_write(0, b'X')
-            time.sleep(0.01) 
+            self.jlink.rtt_write(0, b'x')
+            time.sleep(0.01)
 
-            # 2. Send 20-byte header to Channel 0
-            header = struct.pack("<IIIII", 0xDEADBEEF, freq, freq, 0, len(bin_data))
+            # 2. Send 32-byte unified header to Channel 0
+            header = struct.pack(
+                "<IIIIIIII",
+                0xDEADBEEF,
+                fstart,
+                fend,
+                0,
+                len(bin_data),
+                mode,
+                repeats,
+                delay,
+            )
             self.jlink.rtt_write(0, header)
-            
+
             # 3. Send raw data to Channel 1
-            # We give the MCU a tiny gap to process the header and switch channels
-            #time.sleep(0.05)
             self.jlink.rtt_write(1, bin_data)
             print(f"Transfer initiated: {len(bin_data)} bytes.")
-            
+
         except Exception as e:
             print(f"Transmission Error: {e}")
 

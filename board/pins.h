@@ -1,6 +1,9 @@
 //LED
 #define LED_PIN 3
 
+// Debug pulse pin (avoid UART/I2C/SPI/HSTX pins)
+#define DEBUG_PULSE_PIN 39
+
 // UART defines
 // By default the stdout UART is `uart0`, so we will use the second one
 #define UART_ID uart1

@@ -24,11 +24,17 @@
                         "label": "DDS Console",
                         "port": 0,
                         "type": "console"
+                    },
+                    {
+                        "label": "DDS Data",
+                        "port": 1,
+                        "type": "binary"
                     }
+
                 ]
             },
             "svdFile": "${userHome}/.pico-sdk/sdk/2.2.0/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
-            "runToEntryPoint": "main",
+            "runToEntryPoint": null,
             "overrideLaunchCommands": [
                 "monitor reset init",
                 "load \"${command:raspberry-pi-pico.launchTargetPath}\""
@@ -63,7 +69,7 @@
             ]
         },
         "svdFile": "${userHome}/.pico-sdk/sdk/2.2.0/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
-        "runToEntryPoint": "main"
+        "runToEntryPoint": null
     }
     ]
 }

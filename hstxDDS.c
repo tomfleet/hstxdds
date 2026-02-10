@@ -53,13 +53,16 @@ int main() {
     dds_init_rtt(LED_PIN); 
 
     // Enable watchdog
-    //watchdog_enable(100, 1);
+    watchdog_enable(500, 1);
 
     while (1) {
         // High-level mailbox now handles all RTT traffic exclusively
-        process_mailbox();
-        
-        //watchdog_update();
+       process_mailbox();
+       //SEGGER_RTT_printf(0, "Main loop heartbeat. \n\r");
+       watchdog_update();
+       sleep_ms(50);
+       //dds_update();
+      
     }
 }
 
