@@ -10,7 +10,7 @@
 #include "pico/time.h"
 #include "hardware/sync.h"
 #include "board/pins.h"
-#include "math.h"
+#include <math.h> // Needed for sin()
 #include "dma_dds/dma_dds.h"
 
 // Memory Allocation
@@ -47,7 +47,7 @@ static uint8_t rtt_bin_up_buf[1024];
 static uint8_t rtt_bin_down_buf[16384 + 64]; // Enough for Wave + Header
 static uint8_t rtt_ch0_down_buf[256];
 static uint8_t debug_dma_buf[32];
-static const uint32_t test_pattern_freq_hz = 2000000;
+static const uint32_t test_pattern_freq_hz = 100000000UL;    
 static const uint32_t test_pattern_samples_per_step =1;
 
 static int dds_dma_chan = -1;
@@ -67,7 +67,7 @@ dds_config_t current_config = {
     .buffer_len = 0,
     .fstart = 1000,
     .fend = 1000,
-    .duration_ms = 0,
+    .duration_ms = 2,
     .mode = DDS_MODE_SINGLE,
     .repeats = 0,
     .delay_ms = 0
@@ -102,6 +102,11 @@ static void log_dma_status(const char *tag) {
 static void hstx_bus_enable(void) {
     for (int i = 12; i <= 19; i++) {
         gpio_set_function(i, GPIO_FUNC_HSTX);
+        gpio_set_drive_strength(i, DDS_HSTX_DRIVE_STRENGTH);
+        gpio_set_slew_rate(i, DDS_HSTX_SLEW_RATE);
+    }
+    if (!hstx_ctrl_hw) {
+        return;
     }
     // RP2350 HSTX lane order appears to be nibble-swapped (4..7,0..3)
     for (int i = 0; i < 8; i++) {
@@ -128,6 +133,11 @@ static void hstx_bus_disable_and_low(void) {
 // --- RESTORED: Standard apply_dds_config with 3 args ---
 void apply_dds_config(uint32_t freq_hz, uint8_t *buf, uint32_t len) {
     if (dds_dma_chan < 0) return;
+    if (!buf || len == 0 || freq_hz == 0) return;
+    if (len > MAX_WAVEFORM_SIZE) {
+        len = MAX_WAVEFORM_SIZE;
+    }
+    if (!hstx_ctrl_hw || !hstx_fifo_hw) return;
     
     dma_channel_abort(dds_dma_chan);
 
@@ -149,11 +159,11 @@ void apply_dds_config(uint32_t freq_hz, uint8_t *buf, uint32_t len) {
 
     // Debug marker: idle high, 5 pulses, then low for transfer
     gpio_put(DEBUG_PULSE_PIN, 1);
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 3; i++) {
         gpio_put(DEBUG_PULSE_PIN, 0);
-        busy_wait_us_32(10);
+        busy_wait_us_32(5);
         gpio_put(DEBUG_PULSE_PIN, 1);
-        busy_wait_us_32(10);
+        busy_wait_us_32(5);
     }
     gpio_put(DEBUG_PULSE_PIN, 0);
 
@@ -536,15 +546,7 @@ void __isr_dma_handler(void) {
     }
 }
 
-// void __isr_dma_handler(void) {
-//     if (dma_hw->ints0 & (1u << dds_dma_chan)) {
-//         dma_hw->ints0 = 1u << dds_dma_chan; // Clear interrupt
-//         dma_busy = false;
-//         //SEGGER_RTT_WriteString(0, "DMA complete\n");
-//     }
-// }
-
-// Generate a simple Sine Wave into the buffer (no DMA start)
+// Generate a simple Sine Wave into the buffer
 void generate_waveform_sine(void) {
     // Generate 1024 points of a sine wave (0..255)
     int len = 1024;
@@ -586,7 +588,6 @@ void generate_standalone_sine(void) {
         dds_update_config(&current_config);
     }
 }
-
 void dds_init_rtt(uint gpio_pin) {
     // --- RTT & Buffer Setup ---
     SEGGER_RTT_Init();
@@ -607,8 +608,8 @@ void dds_init_rtt(uint gpio_pin) {
         clk_hstx,
         0,
         CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLK_SYS,
-        125000000, 
-        125000000
+        150000000, // Input frequency (assuming 125MHz sys clock)
+        150000000  // Output frequency
     );
     // 4. Enable the HSTX Peripheral Block
     // (Must be done before writing to FIFO or CSR)
@@ -623,7 +624,8 @@ void dds_init_rtt(uint gpio_pin) {
     gpio_init(DEBUG_PULSE_PIN);
     gpio_set_dir(DEBUG_PULSE_PIN, GPIO_OUT);
     gpio_disable_pulls(DEBUG_PULSE_PIN);
-    gpio_set_drive_strength(DEBUG_PULSE_PIN, GPIO_DRIVE_STRENGTH_12MA);
+    gpio_set_drive_strength(DEBUG_PULSE_PIN, GPIO_DRIVE_STRENGTH_4MA);
+    gpio_set_slew_rate(DEBUG_PULSE_PIN, GPIO_SLEW_RATE_SLOW);
     gpio_put(DEBUG_PULSE_PIN, 1);
 
     // --------------------------------------------------
@@ -693,14 +695,14 @@ void dds_init_rtt2(uint gpio_pin) {
     SEGGER_RTT_WriteString(0, "Init: GPIO HSTX done\n");
 
     // Initialize RTT FIRST
-    //SEGGER_RTT_Init();
+    SEGGER_RTT_Init();
     SEGGER_RTT_WriteString(0, "Init: RTT initialized\n");
     
     // Config Channel 1 for Binary (Index 1)
     SEGGER_RTT_ConfigUpBuffer(1, "DataOut", rtt_bin_up_buf, sizeof(rtt_bin_up_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
     SEGGER_RTT_ConfigDownBuffer(1, "DataIn", rtt_bin_down_buf, sizeof(rtt_bin_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
     SEGGER_RTT_ConfigDownBuffer(0, "Terminal", rtt_ch0_down_buf, sizeof(rtt_ch0_down_buf), SEGGER_RTT_MODE_NO_BLOCK_SKIP);
-    SEGGER_RTT_WriteString(0, "Init: buffers done\n");
+    for (int i = 12; i < 20; i++) gpio_set_function(i, GPIO_FUNC_HSTX);
 
     // Claim DMA channel FIRST (needed by apply_dds_config)
     if (dds_dma_chan < 0) {
@@ -741,6 +743,22 @@ void dds_init_rtt2(uint gpio_pin) {
 //     // 3. AUTO-START (Bypassing RTT)
 //     generate_standalone_sine();
 // }
+
+void dds_init(uint gpio_pin) {
+    // Initialize standard IO just in case
+    stdio_init_all();
+
+    // 1. Set Pins 12-19 to HSTX
+    for (int i = 0; i < 8; i++) {
+        gpio_set_function(HSTX_START_PIN + i, GPIO_FUNC_HSTX);
+    }
+
+    // 2. Claim DMA
+    if (dds_dma_chan < 0) dds_dma_chan = dma_claim_unused_channel(true);
+
+    // 3. AUTO-START (Bypassing RTT)
+    //generate_standalone_sine();
+}
 
 void process_mailbox() {
     uint32_t now = to_ms_since_boot(get_absolute_time());

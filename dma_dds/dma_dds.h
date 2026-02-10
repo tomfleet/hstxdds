@@ -21,6 +21,15 @@
 #define DDS_HSTX_NIBBLE_SWAP 1
 #endif
 
+// HSTX pad tuning (GPIO pad settings)
+#ifndef DDS_HSTX_DRIVE_STRENGTH
+#define DDS_HSTX_DRIVE_STRENGTH GPIO_DRIVE_STRENGTH_2MA
+#endif
+
+#ifndef DDS_HSTX_SLEW_RATE
+#define DDS_HSTX_SLEW_RATE GPIO_SLEW_RATE_SLOW
+#endif
+
 // 32-byte header matching Python struct.pack
 typedef struct __attribute__((packed)) {
     uint32_t sync;       // 0xDEADBEEF

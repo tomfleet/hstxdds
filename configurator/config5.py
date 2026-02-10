@@ -81,6 +81,8 @@ class PicoController(cmd.Cmd):
                     repeat        : Run waveform once (alias for repeat=1)
                     repeat=N      : Run waveform N times
                     delay=ms      : Delay between repeats in ms
+                    swap          : Swap upper/lower nibbles in each byte
+                    swap=Y|N      : Explicit swap enable/disable
                     <ms>          : Bare number treated as delay
         """
         args = line.split()
@@ -94,6 +96,7 @@ class PicoController(cmd.Cmd):
         mode = 0
         repeats = 0
         delay = 0
+        swap = False
 
         try:
             fstart = int(args[1])
@@ -127,11 +130,23 @@ class PicoController(cmd.Cmd):
                     repeats = int(value)
                 elif xl.startswith("delay="):
                     delay = int(xl.split("=", 1)[1])
+                elif xl == "swap":
+                    swap = True
+                elif xl.startswith("swap="):
+                    value = xl.split("=", 1)[1].strip()
+                    if value in {"1", "true", "y", "yes"}:
+                        swap = True
+                    elif value in {"0", "false", "n", "no"}:
+                        swap = False
+                    else:
+                        raise ValueError(f"invalid swap value: {value}")
                 elif xl.lstrip("-").isdigit() and delay == 0:
                     delay = int(xl)
 
             with open(filename, "rb") as f:
                 bin_data = f.read()
+            if swap:
+                bin_data = bytes(((b & 0x0F) << 4) | ((b & 0xF0) >> 4) for b in bin_data)
         except Exception as e:
             print(f"File/Arg Error: {e}")
             return
